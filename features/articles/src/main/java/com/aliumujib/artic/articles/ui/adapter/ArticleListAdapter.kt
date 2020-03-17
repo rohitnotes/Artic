@@ -13,24 +13,20 @@ import coil.size.Scale
 import coil.size.ViewSizeResolver
 import coil.transform.RoundedCornersTransformation
 import com.aliumujib.artic.articles.R
-import com.aliumujib.artic.articles.databinding.LoadingItemBinding
-import com.aliumujib.artic.articles.models.ArticleUIModel
-import com.aliumujib.artic.views.ext.hide
-import com.aliumujib.artic.views.ext.show
+import com.aliumujib.artic.views.bookmarkbutton.BookmarkButtonView
+import com.aliumujib.artic.views.databinding.LoadingItemBinding
 import com.aliumujib.artic.views.iconandtitle.IconAndTitleView
-import timber.log.Timber
+import com.aliumujib.artic.views.models.ArticleUIModel
+import com.aliumujib.artic.views.recyclerview.ListState
+import com.aliumujib.artic.views.recyclerview.LoadingViewHolder
 
 
-class ArticleListAdapter : ListAdapter<ArticleUIModel, RecyclerView.ViewHolder>(DiffCallback()) {
+class ArticleListAdapter(private val articleClicks: ArticleClickListener) :
+    ListAdapter<ArticleUIModel, RecyclerView.ViewHolder>(DiffCallback()) {
 
     private var listState: ListState? = null
     private var viewType: LAYOUT = LAYOUT.GRID
 
-    sealed class ListState(val error: Throwable?) {
-        object Loading : ListState(null)
-        object Idle : ListState(null)
-        data class Error (val throwable: Throwable) : ListState(throwable)
-    }
 
     enum class LAYOUT(val value: Int) {
         GRID(1),
@@ -43,13 +39,13 @@ class ArticleListAdapter : ListAdapter<ArticleUIModel, RecyclerView.ViewHolder>(
             LAYOUT.GRID.value -> {
                 val view = LayoutInflater.from(parent.context)
                     .inflate(R.layout.article_item_grid, parent, false)
-                ArticleViewHolder(view)
+                ArticleViewHolder(view, articleClicks)
             }
             LAYOUT.LIST.value -> {
                 val view =
                     LayoutInflater.from(parent.context)
                         .inflate(R.layout.article_item_list, parent, false)
-                ArticleViewHolder(view)
+                ArticleViewHolder(view, articleClicks)
             }
             else -> {
                 val inflater = LayoutInflater.from(parent.context)
@@ -62,7 +58,6 @@ class ArticleListAdapter : ListAdapter<ArticleUIModel, RecyclerView.ViewHolder>(
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-        Timber.d("Position: ${position} itemType: ${holder.itemViewType}")
         when (holder.itemViewType) {
             LAYOUT.GRID.value -> {
                 (holder as ArticleViewHolder).bind(getItem(position))
@@ -94,7 +89,9 @@ class ArticleListAdapter : ListAdapter<ArticleUIModel, RecyclerView.ViewHolder>(
     }
 
 
-     fun isLoadingNextPage() = listState != null && listState != ListState.Idle
+    fun isLoadingNextPage() = listState != null && listState != ListState.Idle
+
+    fun isEmpty() = super.getItemCount() == 0
 
     fun setListState(newListState: ListState?) {
         val previousState = this.listState
@@ -112,26 +109,41 @@ class ArticleListAdapter : ListAdapter<ArticleUIModel, RecyclerView.ViewHolder>(
         }
     }
 
-
+    fun setLayout(layout: LAYOUT) {
+        viewType = layout
+        this.notifyItemRangeChanged(0, itemCount)
+    }
 
     override fun getItemCount(): Int {
         return super.getItemCount() + if (isLoadingNextPage()) 1 else 0
     }
 
 
-    class ArticleViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    class ArticleViewHolder(itemView: View, var articleClicks: ArticleClickListener) :
+        RecyclerView.ViewHolder(itemView) {
         private val articleImage = itemView.findViewById<ImageView>(R.id.article_image)
         private val articleCategory = itemView.findViewById<TextView>(R.id.article_category)
         private val articleTitle = itemView.findViewById<TextView>(R.id.article_title)
         private val articleDateTimePublish =
             itemView.findViewById<TextView>(R.id.article_date_time_publish)
         private val commentsButton = itemView.findViewById<IconAndTitleView>(R.id.comments_button)
+        private val bookmarkIcon = itemView.findViewById<BookmarkButtonView>(R.id.bookmark_icon)
 
 
         fun bind(model: ArticleUIModel) {
+            this.articleImage.setOnClickListener {
+                articleClicks.onArticleClicked(model)
+            }
+            this.bookmarkIcon.setOnBookmarkStatusChangeListener(object :
+                BookmarkButtonView.OnBookmarkStatusChangeListener {
+                override fun onStatusChanged(isBookmarked: Int) {
+                    articleClicks.onBookmarkBtnClicked(model, model.isBookmarked)
+                }
+            })
+            this.bookmarkIcon.setIsBookmarked(model.isBookmarked)
             this.articleCategory.text = model.categories.firstOrNull()?.title
             this.articleTitle.text = model.title_plain
-            this.articleDateTimePublish.text = model.date.toString()
+            this.articleDateTimePublish.text = model.dateString
             this.articleImage.load(model.fullImageURL) {
                 transformations(RoundedCornersTransformation(6.0f, 6.0f, 0.0f, 0.0f))
                 //error(errorPlaceHolder)
@@ -143,30 +155,7 @@ class ArticleListAdapter : ListAdapter<ArticleUIModel, RecyclerView.ViewHolder>(
     }
 
 
-    class LoadingViewHolder(
-        private val binding: LoadingItemBinding
-    ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(model: ListState?) {
-            when (model) {
-                is ListState.Idle -> {
-                    binding.loading.stopShimmerAnimation()
-                    binding.loading.hide()
-                    binding.retryLayout.hide()
-                }
-                is ListState.Loading -> {
-                    binding.loading.startShimmerAnimation()
-                    binding.loading.show()
-                    binding.retryLayout.hide()
-                }
-                is ListState.Error -> {
-                    binding.loading.stopShimmerAnimation()
-                    binding.loading.hide()
-                    binding.retryLayout.show()
-                }
-            }
-        }
-    }
 
     class DiffCallback : DiffUtil.ItemCallback<ArticleUIModel>() {
         override fun areItemsTheSame(oldItem: ArticleUIModel, newItem: ArticleUIModel): Boolean {

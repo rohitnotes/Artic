@@ -1,39 +1,58 @@
 package com.aliumujib.artic.articles.ui
 
 import android.content.Context
+import android.graphics.drawable.Animatable
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
+import androidx.vectordrawable.graphics.drawable.AnimatedVectorDrawableCompat
+import com.aliumujib.artic.articles.R
 import com.aliumujib.artic.articles.databinding.ArticleListFragmentBinding
 import com.aliumujib.artic.articles.di.ArticleListModule
 import com.aliumujib.artic.articles.di.DaggerArticleListComponent
-import com.aliumujib.artic.articles.models.ArticleUIModel
 import com.aliumujib.artic.articles.models.ArticleUIModelMapper
 import com.aliumujib.artic.articles.presentation.ArticleListIntent
 import com.aliumujib.artic.articles.presentation.ArticleListViewModel
 import com.aliumujib.artic.articles.presentation.ArticleListViewState
+import com.aliumujib.artic.articles.ui.adapter.ArticleClickListener
 import com.aliumujib.artic.articles.ui.adapter.ArticleListAdapter
 import com.aliumujib.artic.mobile_ui.ApplicationClass.Companion.coreComponent
-import com.aliumujib.artic.views.ext.*
+import com.aliumujib.artic.views.ext.dpToPx
+import com.aliumujib.artic.views.ext.hide
+import com.aliumujib.artic.views.ext.isLastItemDisplaying
+import com.aliumujib.artic.views.ext.nonNullObserve
+import com.aliumujib.artic.views.ext.removeAllDecorations
+import com.aliumujib.artic.views.ext.show
+import com.aliumujib.artic.views.models.ArticleUIModel
 import com.aliumujib.artic.views.mvi.MVIView
 import com.aliumujib.artic.views.recyclerview.GridSpacingItemDecoration
-import com.aliumujib.artic.views.recyclerview.ListSpacingItemDecorator
+import com.aliumujib.artic.views.recyclerview.ListState
+import com.eyowo.android.core.utils.autoDispose
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.ConflatedBroadcastChannel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.channels.BroadcastChannel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.take
 import reactivecircus.flowbinding.recyclerview.scrollStateChanges
 import javax.inject.Inject
 
 
 @ExperimentalCoroutinesApi
-class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListViewState> {
+class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListViewState>,
+    ArticleClickListener {
 
     @Inject
     lateinit var viewModel: ArticleListViewModel
@@ -44,18 +63,22 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
     @Inject
     lateinit var articleUIModelMapper: ArticleUIModelMapper
 
-    private var _binding: ArticleListFragmentBinding? = null
-    private val binding get() = _binding!!
+    private var _binding: ArticleListFragmentBinding by autoDispose()
+    private val binding get() = _binding
 
-    private val _loadInitialIntent = ConflatedBroadcastChannel<ArticleListIntent>()
+    private val _loadInitialIntent = BroadcastChannel<ArticleListIntent>(1)
     private val loadInitialIntent = _loadInitialIntent.asFlow().take(1)
-    //Is this really the best [BroadcastChannel] to use here? TODO replace with https://github.com/Kotlin/kotlinx.coroutines/pull/1354 as soon as its out
+
+    private val _listActionIntents = BroadcastChannel<ArticleListIntent>(1)
+    private val listActionIntents = _listActionIntents.asFlow()
 
     override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
     ): View? {
         _binding = ArticleListFragmentBinding.inflate(inflater, container, false)
-        return _binding!!.root
+        return _binding.root
     }
 
     override fun onAttach(context: Context) {
@@ -66,13 +89,15 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewModel.processActions()
-        _loadInitialIntent.offer(ArticleListIntent.LoadArticleListIntent(true))
+        setHasOptionsMenu(true)
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
 
         viewModel.processIntent(intents())
+        _loadInitialIntent.offer(ArticleListIntent.LoadArticleListIntent)
+
     }
 
 
@@ -81,14 +106,22 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
 
         initializeViews()
 
-        viewModel.states()
-            .onEach {
-                render(it)
-            }.launchIn(lifecycleScope)
+        observeStates()
+    }
+
+    private fun observeStates() {
+        nonNullObserve(viewModel.states(), ::render)
+    }
+
+    private fun provideStaggeredGridLayoutManager(): StaggeredGridLayoutManager {
+        return StaggeredGridLayoutManager(2, RecyclerView.VERTICAL)
+    }
+
+    private fun provideListLayoutManager(): LinearLayoutManager {
+        return LinearLayoutManager(requireContext(), RecyclerView.VERTICAL, false)
     }
 
     private fun initializeViews() {
-        val staggeredGridLayoutManager = StaggeredGridLayoutManager(2, RecyclerView.VERTICAL)
         binding.articles.apply {
             removeAllDecorations()
             addItemDecoration(
@@ -98,15 +131,14 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
                     true
                 )
             )
-            layoutManager = staggeredGridLayoutManager
+            layoutManager = provideStaggeredGridLayoutManager()
             adapter = articlesAdapter
         }
-
     }
 
     private fun loadMoreIntent(): Flow<ArticleListIntent> {
         return binding.articles.scrollStateChanges()
-            .filter { _ -> !articlesAdapter.isLoadingNextPage() }
+            .filter { _ -> !articlesAdapter.isLoadingNextPage() } //only runs when adapter is NOT loading
             .filter { event -> event == RecyclerView.SCROLL_STATE_IDLE }
             .filter { _ -> binding.articles.isLastItemDisplaying() }
             .map {
@@ -115,7 +147,11 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
     }
 
     private fun loadInitialIntent(): Flow<ArticleListIntent> {
-        return loadInitialIntent
+        return loadInitialIntent.filter { articlesAdapter.isEmpty() } //only runs when adapter is empty
+    }
+
+    private fun listActionIntents(): Flow<ArticleListIntent> {
+        return listActionIntents
     }
 
 
@@ -126,22 +162,14 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
                     state.data
                 )
             )
-            state.error != null -> presentErrorState(
-                state.error,
-                state.isLoadingMore
-            )
-            state.isLoading -> presentLoadingState(
-                state.isGrid,
-                state.isLoadingMore
-            )
+            state.error != null -> presentErrorState(state.error, state.isLoadingMore, state.data.isEmpty())
+            state.isLoading -> presentLoadingState(state.isLoadingMore)
         }
     }
 
     private fun presentSuccessState(data: List<ArticleUIModel>) {
-        binding.shimmerViewContainer.stopShimmerAnimation()
-        articlesAdapter.setListState(ArticleListAdapter.ListState.Idle)
-        binding.gridLoading.hide()
-        binding.listLoading.hide()
+        articlesAdapter.setListState(ListState.Idle)
+        binding.loading.hide()
 
         if (data.isNotEmpty()) {
             binding.emptyView.hide()
@@ -156,14 +184,13 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
         articlesAdapter.submitList(data)
     }
 
-    private fun presentErrorState(error: Throwable, isLoadingMoreData: Boolean) {
+    private fun presentErrorState(error: Throwable, isLoadingMoreData: Boolean, isEmptyList:Boolean) {
         binding.emptyView.hide()
-        binding.shimmerViewContainer.stopShimmerAnimation()
-        binding.shimmerViewContainer.hide()
+        binding.loading.hide()
         if (isLoadingMoreData) {
             binding.articles.show()
-            articlesAdapter.setListState(ArticleListAdapter.ListState.Error(error))
-        } else {
+            articlesAdapter.setListState(ListState.Error(error))
+        } else if(isEmptyList && isLoadingMoreData.not()) {
             binding.articles.hide()
             binding.errorView.show()
         }
@@ -173,24 +200,15 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
         Toast.makeText(context, error.message, Toast.LENGTH_LONG).show()
     }
 
-    private fun presentLoadingState(isGrid: Boolean, isLoadingMoreData: Boolean) {
-        binding.shimmerViewContainer.show()
-        binding.shimmerViewContainer.startShimmerAnimation()
+    private fun presentLoadingState(isLoadingMoreData: Boolean) {
         when {
             isLoadingMoreData -> {
                 binding.articles.show()
-                articlesAdapter.setListState(ArticleListAdapter.ListState.Loading)
-                return
-            }
-            isGrid -> {
-                binding.articles.hide()
-                binding.listLoading.hide()
-                binding.gridLoading.show()
+                articlesAdapter.setListState(ListState.Loading)
             }
             else -> {
                 binding.articles.hide()
-                binding.listLoading.show()
-                binding.gridLoading.hide()
+                binding.loading.show()
             }
         }
         binding.emptyView.hide()
@@ -210,12 +228,61 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
     }
 
     override fun intents(): Flow<ArticleListIntent> {
-        return loadInitialIntent().mergeWith(loadMoreIntent())
-            .onEach {
-                delay(500)
-            }
-            .conflate()
+        return merge(loadMoreIntent(), loadInitialIntent(), listActionIntents())
     }
 
+
+    override fun onArticleClicked(articleUIModel: ArticleUIModel) {
+        findNavController().navigate(
+            ArticleListFragmentDirections.actionArticleListFragmentToNavDetails(
+                articleUIModel
+            )
+        )
+    }
+
+    override fun onBookmarkBtnClicked(articleUIModel: ArticleUIModel, isBookmarked: Boolean) {
+        _listActionIntents.offer(
+            ArticleListIntent.SetArticleBookmarkStatusIntent(
+                articleUIModelMapper.mapFromUI(articleUIModel),
+                isBookmarked
+            )
+        )
+    }
+
+    override fun onShareBtnClicked(articleUIModel: ArticleUIModel) {
+
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
+        inflater.inflate(R.menu.main_home, menu)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.action_search ->  // do stuff
+                return true
+            R.id.action_switch_mode ->  // do more stuff
+                if (!(item.icon as Animatable).isRunning) {
+                    if (binding.articles.layoutManager is StaggeredGridLayoutManager) {
+                        item.icon = AnimatedVectorDrawableCompat.create(
+                            requireContext(),
+                            R.drawable.avd_list_to_grid
+                        )
+                        binding.articles.layoutManager = provideListLayoutManager()
+                        articlesAdapter.setLayout(ArticleListAdapter.LAYOUT.LIST)
+                    } else {
+                        item.icon = AnimatedVectorDrawableCompat.create(
+                            requireContext(),
+                            R.drawable.avd_grid_to_list
+                        )
+                        binding.articles.layoutManager = provideStaggeredGridLayoutManager()
+                        articlesAdapter.setLayout(ArticleListAdapter.LAYOUT.GRID)
+                    }
+                    (item.icon as Animatable).start()
+                    return true
+                }
+        }
+        return false
+    }
 
 }

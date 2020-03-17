@@ -23,4 +23,9 @@ sealed class ArticleListResult : MVIResult {
         data class Error(val error: Throwable) : RefreshArticleListResults()
     }
 
+    sealed class SetBookmarkStatusResults : ArticleListResult() {
+        data class Success(var article: Article) : SetBookmarkStatusResults()
+        data class Error(val error: Throwable) : SetBookmarkStatusResults()
+    }
+
 }

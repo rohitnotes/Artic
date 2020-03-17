@@ -10,6 +10,7 @@ import dagger.Module
 import dagger.Provides
 import com.aliumujib.artic.articles.presentation.ArticleListViewModel
 import com.aliumujib.artic.domain.usecases.articles.GetAllArticles
+import com.aliumujib.artic.domain.usecases.articles.SetArticleBookmarkStatus
 import com.aliumujib.artic.views.ext.viewModel
 
 /**
@@ -41,8 +42,9 @@ class ArticleListModule(
     @FeatureScope
     @Provides
     fun providesArticleListActionProcessor(
-        getAllArticles: GetAllArticles
-    ) = ArticleListActionProcessor(getAllArticles)
+        getAllArticles: GetAllArticles,
+        setArticleBookmarkStatus: SetArticleBookmarkStatus
+    ) = ArticleListActionProcessor(getAllArticles, setArticleBookmarkStatus)
 
 
 
@@ -54,6 +56,6 @@ class ArticleListModule(
      */
     @FeatureScope
     @Provides
-    fun providesArticleListAdapter() = ArticleListAdapter()
+    fun providesArticleListAdapter() = ArticleListAdapter(fragment)
 
 }

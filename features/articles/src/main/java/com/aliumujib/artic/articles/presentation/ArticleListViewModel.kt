@@ -1,15 +1,13 @@
 package com.aliumujib.artic.articles.presentation
 
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.viewModelScope
-import com.aliumujib.artic.views.ext.holdOn
 import com.aliumujib.artic.views.mvi.MVIViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.ConflatedBroadcastChannel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BroadcastChannel
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 import timber.log.Timber
 
 @ExperimentalCoroutinesApi
@@ -19,25 +17,24 @@ class ArticleListViewModel(
 
     private var currentPageNumber = 1
 
-    private var _actionBroadcastChannel = ConflatedBroadcastChannel<ArticleListAction>()
+    private var _actionBroadcastChannel = BroadcastChannel<ArticleListAction>(30)
     private var actionsFlow = _actionBroadcastChannel.asFlow()
 
-    private var _statesBroadcastChannel = ConflatedBroadcastChannel<ArticleListViewState>()
-    private var statesFlow = _statesBroadcastChannel.asFlow()
+    private var _states = MutableLiveData<ArticleListViewState>()
+    private var states: LiveData<ArticleListViewState> = _states
 
 
     fun processActions() {
-
         actionsFlow.flatMapMerge {
-            articleListActionProcessor.actionToResultTransformer(it)
-        }.onEach { result: ArticleListResult ->
-            Timber.v(
-                "New results of type: ${result::class.java.canonicalName?.replace(
-                    "com.aliumujib.artic.articles.presentation.ArticleListResult.",
-                    ""
-                )}"
-            )
-        }
+                articleListActionProcessor.actionToResultTransformer(it)
+            }.onEach { result: ArticleListResult ->
+                Timber.v(
+                    "New results of type: ${result::class.java.canonicalName?.replace(
+                        "com.aliumujib.artic.articles.presentation.ArticleListResult.",
+                        ""
+                    )}"
+                )
+            }
             .scan(ArticleListViewState.init()) { previous: ArticleListViewState, result: ArticleListResult ->
                 previous.reduce(previous, result)
             }
@@ -45,18 +42,18 @@ class ArticleListViewModel(
             .onStart { Timber.d("subscribed to states") }
             .onEach {
                 Timber.v("new view state with data size: ${it.data.size}")
-                _statesBroadcastChannel.offer(it)
+                _states.postValue(it)
             }.launchIn(viewModelScope)
     }
 
 
-    override fun states(): Flow<ArticleListViewState> {
-        return statesFlow
+    override fun states(): LiveData<ArticleListViewState> {
+        return states
     }
 
     override fun processIntent(intents: Flow<ArticleListIntent>) {
         intents.onEach {
-            Timber.v("New Intent: ${it::class.java.simpleName}")
+            Timber.v("New intent in vm: ${it::class.java.simpleName}")
             onAction(actionFromIntent(it))
         }.launchIn(viewModelScope)
     }
@@ -66,11 +63,13 @@ class ArticleListViewModel(
     private fun actionFromIntent(intent: ArticleListIntent): ArticleListAction {
         return when (intent) {
             is ArticleListIntent.LoadArticleListIntent -> ArticleListAction.LoadArticleListAction(
-                intent.isOnline, page = 1
+                page = 1
             )
-            is ArticleListIntent.RefreshArticleListIntent -> ArticleListAction.RefreshArticleListAction(
-                intent.isOnline
+            is ArticleListIntent.SetArticleBookmarkStatusIntent -> ArticleListAction.SetArticleBookmarkStatusAction(
+                intent.article,
+                intent.isBookmarked
             )
+            is ArticleListIntent.RefreshArticleListIntent -> ArticleListAction.RefreshArticleListAction
             ArticleListIntent.FetchMoreArticleListIntent -> {
                 currentPageNumber += 1
                 ArticleListAction.FetchMoreArticleListAction(currentPageNumber)

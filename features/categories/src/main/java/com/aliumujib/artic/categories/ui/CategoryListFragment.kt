@@ -9,7 +9,7 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.aliumujib.artic.articles.models.CategoryUIModel
+import com.aliumujib.artic.views.models.CategoryUIModel
 import com.aliumujib.artic.articles.models.CategoryUIModelMapper
 import com.aliumujib.artic.categories.databinding.FragmentCategoriesBinding
 import com.aliumujib.artic.categories.di.CategoryListModule
@@ -19,12 +19,10 @@ import com.aliumujib.artic.categories.presentation.CategoryListViewModel
 import com.aliumujib.artic.categories.presentation.CategoryListViewState
 import com.aliumujib.artic.categories.ui.adapter.CategoryListAdapter
 import com.aliumujib.artic.mobile_ui.ApplicationClass
-import com.aliumujib.artic.views.ext.dpToPx
-import com.aliumujib.artic.views.ext.hide
-import com.aliumujib.artic.views.ext.removeAllDecorations
-import com.aliumujib.artic.views.ext.show
+import com.aliumujib.artic.views.ext.*
 import com.aliumujib.artic.views.mvi.MVIView
 import com.aliumujib.artic.views.recyclerview.ListSpacingItemDecorator
+import com.eyowo.android.core.utils.autoDispose
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.ConflatedBroadcastChannel
 import kotlinx.coroutines.flow.*
@@ -37,13 +35,13 @@ class CategoryListFragment : Fragment(), MVIView<CategoryListIntent, CategoryLis
     lateinit var categoryListAdapter: CategoryListAdapter
 
     @Inject
-    lateinit var categoryListViewModel: CategoryListViewModel
+    lateinit var viewModel: CategoryListViewModel
 
     @Inject
     lateinit var categoryUIModelMapper: CategoryUIModelMapper
 
-    private var _binding: FragmentCategoriesBinding? = null
-    private val binding get() = _binding!!
+    private var _binding: FragmentCategoriesBinding by autoDispose()
+    private val binding get() = _binding
 
     private val _loadInitialIntent = ConflatedBroadcastChannel<CategoryListIntent>()
     private val loadInitialIntent = _loadInitialIntent.asFlow().take(1)
@@ -53,13 +51,13 @@ class CategoryListFragment : Fragment(), MVIView<CategoryListIntent, CategoryLis
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View? {
         _binding = FragmentCategoriesBinding.inflate(inflater, container, false)
-        return _binding!!.root
+        return _binding.root
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
 
-        categoryListViewModel.processIntent(intents())
+        viewModel.processIntent(intents())
     }
 
     override fun onAttach(context: Context) {
@@ -67,21 +65,15 @@ class CategoryListFragment : Fragment(), MVIView<CategoryListIntent, CategoryLis
         initDependencyInjection()
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        categoryListViewModel.processActions()
-        _loadInitialIntent.offer(CategoryListIntent.LoadCategoriesListIntent)
-    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
         initializeViews()
-        categoryListViewModel.states().onEach {
-            render(it)
-        }.launchIn(lifecycleScope)
 
+        nonNullObserve(viewModel.states(), ::render)
+
+        _loadInitialIntent.offer(CategoryListIntent.LoadCategoriesListIntent)
     }
 
     private fun initializeViews() {
@@ -97,6 +89,10 @@ class CategoryListFragment : Fragment(), MVIView<CategoryListIntent, CategoryLis
             layoutManager = linearLayoutManager
             adapter = categoryListAdapter
         }
+
+        categoryListAdapter.categoryClicks().onEach {
+
+        }.launchIn(lifecycleScope)
     }
 
 
@@ -124,8 +120,7 @@ class CategoryListFragment : Fragment(), MVIView<CategoryListIntent, CategoryLis
     }
 
     private fun presentSuccessState(data: List<CategoryUIModel>) {
-        binding.shimmerViewContainer.stopShimmerAnimation()
-        binding.listLoading.hide()
+        binding.loading.hide()
 
         if (data.isNotEmpty()) {
             binding.emptyView.hide()
@@ -142,8 +137,7 @@ class CategoryListFragment : Fragment(), MVIView<CategoryListIntent, CategoryLis
 
     private fun presentErrorState(error: Throwable) {
         binding.emptyView.hide()
-        binding.shimmerViewContainer.stopShimmerAnimation()
-        binding.shimmerViewContainer.hide()
+        binding.loading.hide()
         binding.categories.hide()
         binding.errorView.show()
         error.message?.let {
@@ -153,16 +147,15 @@ class CategoryListFragment : Fragment(), MVIView<CategoryListIntent, CategoryLis
     }
 
     private fun presentLoadingState() {
-        binding.shimmerViewContainer.show()
-        binding.shimmerViewContainer.startShimmerAnimation()
-        binding.listLoading.show()
+        binding.loading.show()
         binding.categories.hide()
         binding.emptyView.hide()
         binding.errorView.hide()
     }
 
     override fun intents(): Flow<CategoryListIntent> {
-        return loadInitialIntent
+        return loadInitialIntent.filter { categoryListAdapter.isEmpty() }
     }
+
 
 }
