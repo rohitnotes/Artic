@@ -10,6 +10,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.core.app.ShareCompat
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -36,6 +37,7 @@ import com.aliumujib.artic.views.ext.show
 import com.aliumujib.artic.views.models.ArticleUIModel
 import com.aliumujib.artic.views.mvi.MVIView
 import com.aliumujib.artic.views.recyclerview.GridSpacingItemDecoration
+import com.aliumujib.artic.views.recyclerview.ListSpacingItemDecorator
 import com.aliumujib.artic.views.recyclerview.ListState
 import com.eyowo.android.core.utils.autoDispose
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -64,6 +66,8 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
 
     @Inject
     lateinit var articleUIModelMapper: ArticleUIModelMapper
+
+    private var _viewModeBtn: MenuItem? = null
 
     private var _binding: ArticleListFragmentBinding by autoDispose()
     private val binding get() = _binding
@@ -115,6 +119,7 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
         nonNullObserve(viewModel.states(), ::render)
     }
 
+
     private fun provideStaggeredGridLayoutManager(): StaggeredGridLayoutManager {
         return StaggeredGridLayoutManager(2, RecyclerView.VERTICAL)
     }
@@ -163,13 +168,12 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
         return listActionIntents
     }
 
-
     override fun render(state: ArticleListViewState) {
         when {
             !state.isLoading && (state.error == null) -> presentSuccessState(
                 articleUIModelMapper.mapToUIList(
                     state.data
-                )
+                ), state.isGrid
             )
             state.error != null -> presentErrorState(
                 state.error,
@@ -180,11 +184,36 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
         }
     }
 
-    private fun presentSuccessState(data: List<ArticleUIModel>) {
+
+    private fun changeListMode(isGrid: Boolean) {
+        _viewModeBtn?.let {
+            if (isGrid && binding.articles.layoutManager !is LinearLayoutManager) {
+                it.icon = AnimatedVectorDrawableCompat.create(requireContext(), R.drawable.avd_list_to_grid)
+                binding.articles.apply {
+                    removeAllDecorations()
+                    addItemDecoration(ListSpacingItemDecorator(context.dpToPx(32), context.dpToPx(16)))
+                    layoutManager = provideListLayoutManager()
+                }
+                articlesAdapter.setLayout(ArticleListAdapter.LAYOUT.LIST)
+                (it.icon as Animatable).start()
+            } else if (isGrid.not() && binding.articles.layoutManager !is StaggeredGridLayoutManager) {
+                it.icon = AnimatedVectorDrawableCompat.create(requireContext(), R.drawable.avd_grid_to_list)
+                binding.articles.apply {
+                    removeAllDecorations()
+                    addItemDecoration(GridSpacingItemDecoration(2, context.dpToPx(16), true))
+                    layoutManager = provideStaggeredGridLayoutManager()
+                }
+                articlesAdapter.setLayout(ArticleListAdapter.LAYOUT.GRID)
+                (it.icon as Animatable).start()
+            }
+        }
+    }
+
+    private fun presentSuccessState(data: List<ArticleUIModel>, grid: Boolean) {
+        changeListMode(grid)
         articlesAdapter.setListState(ListState.Idle)
         binding.loading.hide()
         binding.swipeContainer.isRefreshing = false
-
         if (data.isNotEmpty()) {
             binding.emptyView.hide()
             binding.errorView.hide()
@@ -251,11 +280,7 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
     }
 
     override fun onArticleClicked(articleUIModel: ArticleUIModel) {
-        findNavController().navigate(
-            ArticleListFragmentDirections.actionArticleListFragmentToNavDetails(
-                articleUIModel
-            )
-        )
+        findNavController().navigate(ArticleListFragmentDirections.actionArticleListFragmentToNavDetails(articleUIModel))
     }
 
     override fun onBookmarkBtnClicked(articleUIModel: ArticleUIModel, isBookmarked: Boolean) {
@@ -268,11 +293,18 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
     }
 
     override fun onShareBtnClicked(articleUIModel: ArticleUIModel) {
-
+        val shareIntent = ShareCompat.IntentBuilder.from(requireActivity())
+            .setType("text/plain")
+            .setText(articleUIModel.url)
+            .intent
+        if (shareIntent.resolveActivity(requireActivity().packageManager) != null) {
+            startActivity(shareIntent)
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.main_home, menu)
+        _viewModeBtn = menu.findItem(R.id.action_switch_mode)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -281,22 +313,9 @@ class ArticleListFragment : Fragment(), MVIView<ArticleListIntent, ArticleListVi
                 return true
             R.id.action_switch_mode ->  // do more stuff
                 if (!(item.icon as Animatable).isRunning) {
-                    if (binding.articles.layoutManager is StaggeredGridLayoutManager) {
-                        item.icon = AnimatedVectorDrawableCompat.create(
-                            requireContext(),
-                            R.drawable.avd_list_to_grid
-                        )
-                        binding.articles.layoutManager = provideListLayoutManager()
-                        articlesAdapter.setLayout(ArticleListAdapter.LAYOUT.LIST)
-                    } else {
-                        item.icon = AnimatedVectorDrawableCompat.create(
-                            requireContext(),
-                            R.drawable.avd_grid_to_list
-                        )
-                        binding.articles.layoutManager = provideStaggeredGridLayoutManager()
-                        articlesAdapter.setLayout(ArticleListAdapter.LAYOUT.GRID)
-                    }
-                    (item.icon as Animatable).start()
+                    _listActionIntents.offer(
+                        ArticleListIntent.SwitchArticleListViewModeIntent(binding.articles.layoutManager is StaggeredGridLayoutManager)
+                    )
                     return true
                 }
         }

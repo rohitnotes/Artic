@@ -108,17 +108,23 @@ data class ArticleListViewState(
             is SetBookmarkStatusResults -> {
                 when (result) {
                     is SetBookmarkStatusResults.Success -> {
-                        Timber.d("result: $result")
-                        val articles = previousState.data.toMutableList()
+                        val articles = previousState.data.toMutableList() //makes a new copy of the array
                         (articles).find { it.id == result.article.id }?.isBookmarked =
-                            result.article.isBookmarked
+                            result.article.isBookmarked //we then change the property of the list that we need to.
                         val newState = previousState.copy(data = articles)
-                        Timber.d("result: $result new article: ${(articles).find { it.id == result.article.id }}")
                         newState
                     }
                     is SetBookmarkStatusResults.Error -> {
                         previousState
                     }
+                }
+            }
+            is SetArticleListViewModeResults -> {
+                when(result){
+                    is SetArticleListViewModeResults.Success -> {
+                        previousState.copy(isGrid = result.isGrid)
+                    }
+                    is SetArticleListViewModeResults.Error -> previousState
                 }
             }
         }
