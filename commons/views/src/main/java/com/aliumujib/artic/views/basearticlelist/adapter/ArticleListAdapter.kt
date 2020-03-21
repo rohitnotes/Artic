@@ -1,4 +1,4 @@
-package com.aliumujib.artic.articles.ui.adapter
+package com.aliumujib.artic.views.basearticlelist.adapter
 
 import android.view.LayoutInflater
 import android.view.View
@@ -12,7 +12,7 @@ import coil.api.load
 import coil.size.Scale
 import coil.size.ViewSizeResolver
 import coil.transform.RoundedCornersTransformation
-import com.aliumujib.artic.articles.R
+import com.aliumujib.artic.views.R
 import com.aliumujib.artic.views.bookmarkbutton.BookmarkButtonView
 import com.aliumujib.artic.views.databinding.LoadingItemBinding
 import com.aliumujib.artic.views.iconandtitle.IconAndTitleView
@@ -146,7 +146,7 @@ class ArticleListAdapter(private val articleClicks: ArticleClickListener) :
             }
             this.bookmarkIcon.setIsBookmarked(model.isBookmarked)
             this.articleCategory.text = model.categories.firstOrNull()?.title
-            this.articleTitle.text = model.title_plain
+            this.articleTitle.text = model.titleHtml
             this.articleDateTimePublish.text = model.dateString
             this.articleImage.load(model.fullImageURL) {
                 transformations(RoundedCornersTransformation(6.0f, 6.0f, 0.0f, 0.0f))
