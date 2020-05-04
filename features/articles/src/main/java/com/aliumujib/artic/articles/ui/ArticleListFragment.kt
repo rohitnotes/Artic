@@ -115,9 +115,9 @@ class ArticleListFragment : BaseArticleListFragment(), MVIView<ArticleListIntent
 
     override fun render(state: ArticleListViewState) {
         when {
-            !state.isLoading && (state.error == null) -> presentSuccessState(articleUIModelMapper.mapToUIList(state.data), state.isGrid)
+            !state.isLoadingInitial && (state.error == null) -> presentSuccessState(articleUIModelMapper.mapToUIList(state.data), state.isGrid)
             state.error != null -> presentErrorState(state.error, state.isLoadingMore, state.data.isEmpty())
-            state.isLoading -> presentLoadingState(state.isLoadingMore)
+            state.isLoadingInitial || state.isLoadingMore -> presentLoadingState(state.isLoadingMore)
         }
     }
 
@@ -158,6 +158,10 @@ class ArticleListFragment : BaseArticleListFragment(), MVIView<ArticleListIntent
 
     override fun onBookmarkBtnClicked(articleUIModel: ArticleUIModel, isBookmarked: Boolean) {
         _listActionIntents.offer(ArticleListIntent.SetArticleBookmarkStatusIntent(articleUIModelMapper.mapFromUI(articleUIModel), isBookmarked))
+    }
+
+    override fun onCommentBtnClicked(articleUIModel: ArticleUIModel) {
+
     }
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {

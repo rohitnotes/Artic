@@ -3,23 +3,25 @@ package com.aliumujib.artic.views.basearticlelist.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
 import android.widget.TextView
+import androidx.annotation.StringRes
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.api.load
 import coil.size.Scale
 import coil.size.ViewSizeResolver
-import coil.transform.RoundedCornersTransformation
 import com.aliumujib.artic.views.R
 import com.aliumujib.artic.views.bookmarkbutton.BookmarkButtonView
 import com.aliumujib.artic.views.databinding.LoadingItemBinding
+import com.aliumujib.artic.views.ext.enableCornerRadii
+import com.aliumujib.artic.views.ext.enableOnlyTopCornerRadii
 import com.aliumujib.artic.views.iconandtitle.IconAndTitleView
 import com.aliumujib.artic.views.models.ArticleUIModel
 import com.aliumujib.artic.views.recyclerview.ListState
 import com.aliumujib.artic.views.recyclerview.LoadingViewHolder
-
+import com.google.android.material.imageview.ShapeableImageView
+import kotlinx.coroutines.withContext
 
 class ArticleListAdapter(private val articleClicks: ArticleClickListener) :
     ListAdapter<ArticleUIModel, RecyclerView.ViewHolder>(DiffCallback()) {
@@ -60,10 +62,10 @@ class ArticleListAdapter(private val articleClicks: ArticleClickListener) :
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (holder.itemViewType) {
             LAYOUT.GRID.value -> {
-                (holder as ArticleViewHolder).bind(getItem(position))
+                (holder as ArticleViewHolder).bind(getItem(position), true)
             }
             LAYOUT.LIST.value -> {
-                (holder as ArticleViewHolder).bind(getItem(position))
+                (holder as ArticleViewHolder).bind(getItem(position), false)
             }
             LAYOUT.LOADING.value -> {
                 (holder as LoadingViewHolder).bind(listState)
@@ -121,7 +123,7 @@ class ArticleListAdapter(private val articleClicks: ArticleClickListener) :
 
     class ArticleViewHolder(itemView: View, var articleClicks: ArticleClickListener) :
         RecyclerView.ViewHolder(itemView) {
-        private val articleImage = itemView.findViewById<ImageView>(R.id.article_image)
+        private val articleImage = itemView.findViewById<ShapeableImageView>(R.id.article_image)
         private val articleCategory = itemView.findViewById<TextView>(R.id.article_category)
         private val articleTitle = itemView.findViewById<TextView>(R.id.article_title)
         private val articleDateTimePublish =
@@ -130,8 +132,15 @@ class ArticleListAdapter(private val articleClicks: ArticleClickListener) :
         private val bookmarkIcon = itemView.findViewById<BookmarkButtonView>(R.id.bookmark_icon)
         private val shareIcon = itemView.findViewById<IconAndTitleView>(R.id.share_icon)
 
+        private fun getTitle(isGrid: Boolean, commentCount: Int): String {
+            return if (isGrid) {
+                commentCount.toString()
+            } else {
+                itemView.context.resources.getQuantityString(R.plurals.comments_count, commentCount, commentCount)
+            }
+        }
 
-        fun bind(model: ArticleUIModel) {
+        fun bind(model: ArticleUIModel, isGrid: Boolean) {
             this.articleImage.setOnClickListener {
                 articleClicks.onArticleClicked(model)
             }
@@ -144,12 +153,25 @@ class ArticleListAdapter(private val articleClicks: ArticleClickListener) :
             this.shareIcon.setOnClickListener {
                 articleClicks.onShareBtnClicked(model)
             }
+            this.commentsButton.setOnClickListener {
+                articleClicks.onCommentBtnClicked(model)
+            }
+            this.commentsButton.setTitleText(getTitle(isGrid, model.comment_count))
             this.bookmarkIcon.setIsBookmarked(model.isBookmarked)
             this.articleCategory.text = model.categories.firstOrNull()?.title
             this.articleTitle.text = model.titleHtml
             this.articleDateTimePublish.text = model.dateString
+
+            when {
+                isGrid -> {
+                    this.articleImage.enableOnlyTopCornerRadii(R.dimen.half_space)
+                }
+                else -> {
+                    this.articleImage.enableCornerRadii(R.dimen.half_space)
+                }
+            }
+
             this.articleImage.load(model.fullImageURL) {
-                transformations(RoundedCornersTransformation(6.0f, 6.0f, 0.0f, 0.0f))
                 //error(errorPlaceHolder)
                 crossfade(true)
                 size(ViewSizeResolver.invoke(articleImage, false))

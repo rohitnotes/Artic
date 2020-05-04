@@ -2,17 +2,17 @@ package com.aliumujib.artic.articles.presentation
 
 import com.aliumujib.artic.articles.presentation.ArticleListResult.*
 import com.aliumujib.artic.domain.models.Article
+import com.aliumujib.artic.views.ext.replaceItemInList
 import com.aliumujib.artic.views.mvi.MVIViewState
-import timber.log.Timber
 
 
 data class ArticleListViewState(
-    val isLoading: Boolean = true,
+    val isLoadingInitial: Boolean = true,
     val data: List<Article> = mutableListOf(),
     val error: Throwable?,
     val isGrid: Boolean = true,
-    val isRefreshing: Boolean = false,
-    val isLoadingMore: Boolean = false
+    val isLoadingMore: Boolean = false,
+    val isUpdatingCache: Boolean = false
 ) : MVIViewState {
 
 
@@ -20,12 +20,11 @@ data class ArticleListViewState(
         val isLoading: Boolean = true,
         val isRefreshing: Boolean,
         val isLoadingMore: Boolean
-        ) {
+    ) {
         object InitialLoading : LoadingState(true, false, false)
         object LoadingMore : LoadingState(true, false, true)
         object Refreshing : LoadingState(true, true, false)
         object Idle : LoadingState(false, false, false)
-
     }
 
     companion object {
@@ -46,19 +45,22 @@ data class ArticleListViewState(
         return when (result) {
             is LoadArticleListResults -> {
                 when (result) {
-                    is LoadArticleListResults.Success -> previousState.copy(
-                        isLoading = false,
-                        isLoadingMore = false,
-                        isGrid = result.isGrid,
-                        data = result.data,
-                        error = null
-                    )
+                    is LoadArticleListResults.Success -> {
+                        previousState.copy(
+                            isLoadingInitial = false,
+                            isLoadingMore = false,
+                            isGrid = result.isGrid,
+                            data = result.data,
+                            error = null
+                        )
+                    }
                     is LoadArticleListResults.Error -> previousState.copy(
                         error = result.error,
+                        isLoadingInitial = false,
                         isLoadingMore = false
                     )
                     is LoadArticleListResults.Loading -> previousState.copy(
-                        isLoading = true,
+                        isLoadingInitial = true,
                         isLoadingMore = false,
                         error = null
                     )
@@ -67,17 +69,18 @@ data class ArticleListViewState(
             is RefreshArticleListResults -> {
                 when (result) {
                     is RefreshArticleListResults.Success -> previousState.copy(
-                        isLoading = false,
+                        isLoadingInitial = false,
                         isLoadingMore = false,
                         data = result.data,
                         error = null
                     )
                     is RefreshArticleListResults.Error -> previousState.copy(
                         error = result.error,
-                        isLoadingMore = true
+                        isLoadingInitial = false,
+                        isLoadingMore = false
                     )
                     is RefreshArticleListResults.Refreshing -> previousState.copy(
-                        isLoading = true,
+                        isLoadingInitial = true,
                         isLoadingMore = false,
                         error = null
                     )
@@ -89,7 +92,7 @@ data class ArticleListViewState(
                         val newData = previousState.data as MutableList
                         newData.addAll(result.data)
                         previousState.copy(
-                            isLoading = false,
+                            isLoadingInitial = false,
                             isLoadingMore = false,
                             data = newData,
                             error = null
@@ -97,10 +100,11 @@ data class ArticleListViewState(
                     }
                     is FetchMoreArticleListResults.Error -> previousState.copy(
                         error = result.error,
+                        isLoadingInitial = false,
                         isLoadingMore = true
                     )
                     is FetchMoreArticleListResults.Loading -> previousState.copy(
-                        isLoading = true,
+                        isLoadingInitial = false,
                         isLoadingMore = true,
                         error = null
                     )
@@ -109,9 +113,9 @@ data class ArticleListViewState(
             is SetBookmarkStatusResults -> {
                 when (result) {
                     is SetBookmarkStatusResults.Success -> {
-                        val articles = previousState.data.toMutableList() //makes a new copy of the array
-                        (articles).find { it.id == result.article.id }?.isBookmarked =
-                            result.article.isBookmarked //we then change the property of the list that we need to.
+                        val articles = previousState.data.replaceItemInList({
+                            it.id == result.article.id
+                        }, result.article)
                         val newState = previousState.copy(data = articles)
                         newState
                     }
@@ -121,7 +125,7 @@ data class ArticleListViewState(
                 }
             }
             is SetArticleListViewModeResults -> {
-                when(result){
+                when (result) {
                     is SetArticleListViewModeResults.Success -> {
                         previousState.copy(isGrid = result.isGrid)
                     }

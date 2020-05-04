@@ -7,6 +7,7 @@ import ProductFlavorProduction
 import ProductFlavorQA
 import dependencies.Dependencies
 import dependencies.AnnotationProcessorsDependencies
+import dependencies.TestDependencies
 import extensions.addTestsDependencies
 import extensions.implementation
 import extensions.testImplementation
@@ -101,11 +102,12 @@ dependencies {
     implementation(Dependencies.TIMBER)
     implementation(Dependencies.LOGGING)
     implementation(Dependencies.COIL)
+    implementation(Dependencies.MATERIAL)
+    implementation(TestDependencies.KONVEYOR)
 
     kapt(AnnotationProcessorsDependencies.DAGGER)
     kapt(AnnotationProcessorsDependencies.DATABINDING)
     kapt(AnnotationProcessorsDependencies.ROOM)
 
-    testImplementation(project(BuildModules.Libraries.TEST_UTILS))
     addTestsDependencies()
 }

@@ -84,4 +84,12 @@ object DummyDataFactory {
             randomBuild()
         )
     }
+
+    fun makeRandomCategoryEntityList(count: Int): List<CategoryEntity> {
+        val mutableList = mutableListOf<CategoryEntity>()
+        repeat(count) {
+            mutableList.add(makeRandomCategoryEntity())
+        }
+        return mutableList
+    }
 }
